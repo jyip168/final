@@ -125,3 +125,16 @@ References
 ---
 
 - This final project is adapted from https://www.dataviscourse.net/2020/project/
+
+
+Code Notes
+- The code is written by me using d3 for the website.
+- Both of the visuals can be clicked and dragged, and zoomed in/out.
+
+Website Link
+---
+- a
+
+Screencast Link
+---
+- a
