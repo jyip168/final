@@ -24,19 +24,27 @@
   <select id="nutrientSelect"></select>
   <label>Category:</label>
   <select id="categorySelect"></select>
-  <div class="tooltip" id="tooltip"></div>
 </div>
 <div id="coefPlot">
   <div id="coefContainer"></div>
+  <label>Category:</label>
+  <select id="coefCategorySelect"></select>
+  <label>Store:</label>
+  <select id="coefStoreSelect"></select>
 </div>
+<div class="tooltip" id="tooltip"></div>
 <script type="module">
   console.log(d3);
 
   const tooltip = d3.select("#tooltip");
 
   const margin = { top: 40, right: 40, bottom: 40, left: 70 },
-    width = 500 - margin.left - margin.right,
+    width = 650 - margin.left - margin.right,
     height = 500 - margin.top - margin.bottom;
+
+  const margin2 = { top: 40, right: 40, bottom: 40, left: 150 },
+    width2 = 650 - margin2.left - margin2.right,
+    height2 = 500 - margin2.top - margin2.bottom;
 
   const svg = d3
     .select("#scatterContainer")
@@ -46,7 +54,16 @@
     .append("g")
     .attr("transform", `translate(${margin.left}, ${margin.top})`);
 
+  const svg2 = d3
+    .select("#coefContainer")
+    .append("svg")
+    .attr("width", width2 + margin2.left + margin2.right + 150)
+    .attr("height", height2 + margin2.top + margin2.bottom)
+    .append("g")
+    .attr("transform", `translate(${margin2.left}, ${margin2.top})`);
+
   d3.csv("/foods.csv").then(function (data) {
+    //Scatterplot
     const allNutrients = [
       "Protein",
       "Total Fat",
@@ -271,7 +288,6 @@
     const zoom = d3
       .zoom()
       .scaleExtent([0.5, 10])
-
       .on("zoom", zoomed);
 
     d3.select("#scatterContainer svg").call(zoom);
@@ -302,5 +318,207 @@
           return isFiltered || outOfBounds ? "none" : null;
         });
     }
+
+    // Coefficient Plot
+    const yCoef = d3.scaleBand().range([0, height2]).padding(0.3);
+    const xCoef = d3.scaleLinear().range([0, width2]);
+
+    svg2.append("clipPath").attr("id", "coef-clip").append("rect").attr("width", width2).attr("height", height2)
+    const coefLayer = svg2.append("g").attr("class", "coef-layer").attr("clip-path", "url(#coef-clip)");
+
+    svg2.append("g").attr("class", "y-axis-coef");
+    svg2
+      .append("g")
+      .attr("class", "x-axis-coef")
+      .attr("transform", `translate(0, ${height2})`);
+    svg2
+      .append("line")
+      .attr("class", "zero-line")
+      .attr("y1", 0)
+      .attr("y2", height2)
+      .attr("stroke", "black")
+      .attr("stroke-width", 1);
+
+    svg2
+      .append("text")
+      .attr("class", "x-label-coef")
+      .attr("text-anchor", "end")
+      .attr("fill", "black")
+      .attr("font-size", "12px")
+      .attr("font-weight", "bold")
+      .attr("x", width2)
+      .attr("y", height2 + 35)
+      .text("Regression Coefficient (Impact on Price in USD)");
+
+    const coefTitle = svg2
+      .append("text")
+      .attr("class", "coef-title")
+      .attr("x", width2 / 2)
+      .attr("y", -10)
+      .attr("text-anchor", "middle")
+      .attr("font-size", "16px")
+      .attr("font-weight", "bold");
+    
+
+    const coefCategorySelect = d3.select("#coefCategorySelect");
+    coefCategorySelect
+      .selectAll("option")
+      .data(allCategories)
+      .join("option")
+      .attr("value", (d) => d)
+      .text((d) => d);
+
+    const coefStoreSelect = d3.select("#coefStoreSelect");
+    coefStoreSelect
+      .selectAll("option")
+      .data(allStores)
+      .join("option")
+      .attr("value", (d) => d)
+      .text((d) => d);
+
+    function linearRegression(x, y) {
+      const n = x.length;
+      const xMean = d3.mean(x);
+      const yMean = d3.mean(y);
+
+      let num = 0;
+      let den = 0;
+
+      for (let i = 0; i < n; i++) {
+        num += (x[i] - xMean) * (y[i] - yMean);
+        den += (x[i] - xMean) ** 2;
+      }
+
+      const slope = num / den;
+      const intercept = yMean - slope * xMean;
+
+      let rss = 0;
+
+      for (let i = 0; i < n; i++) {
+        const pred = intercept + slope * x[i];
+        rss += (y[i] - pred) ** 2;
+      }
+
+      const se = Math.sqrt(rss / (n - 2) / den);
+
+      return { slope, se };
+    }
+
+    function updateCoefPlot() {
+      const selectedCategory = coefCategorySelect.property("value");
+      const selectedStore = coefStoreSelect.property("value");
+      const filteredData = data.filter((d) => {
+        const categoryMatch =
+          selectedCategory === "All" ||
+          d["harmonized single category"] === selectedCategory;
+        const storeMatch = d.store === selectedStore;
+        return categoryMatch && storeMatch;
+      });
+
+      const coefData = allNutrients
+        .map((nutrient) => {
+          const xVals = filteredData.map((d) => +d[nutrient]);
+          const yVals = filteredData.map((d) => +d.price);
+
+          const reg = linearRegression(xVals, yVals);
+          if (!isFinite(reg.slope) || !isFinite(reg.se)) return null;
+          const coef = reg.slope;
+          const se = reg.se;
+
+          const ciLow = coef - 1.96 * se;
+          const ciHigh = coef + 1.96 * se;
+
+          return {
+            variable: nutrient,
+            coef: coef,
+            ciLow: ciLow,
+            ciHigh: ciHigh,
+          };
+        })
+        .filter((d) => d !== null);
+
+      const xMin = d3.min(coefData, (d) => d.ciLow);
+      const xMax = d3.max(coefData, (d) => d.ciHigh);
+
+      xCoef.domain([xMin, xMax]);
+      yCoef.domain(coefData.map((d) => d.variable));
+
+      svg2.select(".y-axis-coef").call(d3.axisLeft(yCoef));
+      svg2.select(".x-axis-coef").call(d3.axisBottom(xCoef));
+      svg2.select(".zero-line").attr("x1", xCoef(0)).attr("x2", xCoef(0));
+
+      coefLayer
+        .selectAll(".ci-line")
+        .data(coefData)
+        .join("line")
+        .attr("class", "ci-line")
+        .attr("x1", (d) => xCoef(d.ciLow))
+        .attr("x2", (d) => xCoef(d.ciHigh))
+        .attr("y1", (d) => yCoef(d.variable) + yCoef.bandwidth() / 2)
+        .attr("y2", (d) => yCoef(d.variable) + yCoef.bandwidth() / 2)
+        .attr("stroke", "black")
+        .attr("stroke-width", 2);
+
+      coefLayer
+        .selectAll(".coef-dot")
+        .data(coefData)
+        .join("circle")
+        .attr("class", "coef-dot")
+        .attr("cx", (d) => xCoef(d.coef))
+        .attr("cy", (d) => yCoef(d.variable) + yCoef.bandwidth() / 2)
+        .attr("r", 5)
+        .attr("fill", (d) => (d.coef > 0 ? "green" : "red"))
+        .on("mouseover", function (event, d) {
+        tooltip.style("opacity", 1).html(`
+          <strong>${d.variable}</strong><br/>
+          Coefficient: ${d.coef.toFixed(2)}<br/>
+          95% CI: [${d.ciLow.toFixed(2)}, ${d.ciHigh.toFixed(2)}]<br/>
+        `);
+        d3.select(this).style("stroke", "black").style("stroke-width", 2);
+      })
+      .on("mousemove", function (event) {
+        tooltip
+          .style("left", event.pageX + 10 + "px")
+          .style("top", event.pageY - 20 + "px");
+      })
+      .on("mouseout", function () {
+        tooltip.style("opacity", 0);
+        d3.select(this).style("stroke", "none");
+      });
+
+      coefTitle.text(
+        `Nutrient Impact on Price (${selectedStore} Products${
+          selectedCategory !== "All" ? ": " + selectedCategory : ""
+        })`,
+      );
+    }
+
+    coefCategorySelect.on("change", updateCoefPlot);
+    coefStoreSelect.on("change", updateCoefPlot);
+
+    coefCategorySelect.property("value", allCategories[1]);
+    coefStoreSelect.property("value", allStores[0]);
+
+    updateCoefPlot();
+
+    const coefZoom = d3
+      .zoom()
+      .scaleExtent([0.5, 10])
+      .on("zoom", coefZoomed);
+
+    function coefZoomed(event) {
+      const newX = event.transform.rescaleX(xCoef);
+      svg2.select(".x-axis-coef").call(d3.axisBottom(newX));
+      svg2.select(".zero-line").attr("x1", newX(0)).attr("x2", newX(0));
+      coefLayer
+        .selectAll(".ci-line")
+        .attr("x1", (d) => newX(d.ciLow))
+        .attr("x2", (d) => newX(d.ciHigh));
+      coefLayer.selectAll(".coef-dot").attr("cx", (d) => newX(d.coef));
+    }
+
+    d3.select("#coefContainer svg").call(coefZoom);
+
+    
   });
 </script>
