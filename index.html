@@ -93,7 +93,7 @@
 </style>
 <div id="resources">
   <a href="https://github.com/Barabasi-Lab/GroceryDB/tree/main/data">Data</a>
-  <a href="/JY_Data_Visualization_Process_Book.pdf" download
+  <a href="JY_Data_Visualization_Process_Book.pdf" download
     >Download Process Book</a
   >
 </div>
@@ -180,7 +180,7 @@
     .append("g")
     .attr("transform", `translate(${margin2.left}, ${margin2.top})`);
 
-  d3.csv("/foods.csv").then(function (data) {
+  d3.csv("foods.csv").then(function (data) {
     //Scatterplot
     const allNutrients = [
       "Protein",
