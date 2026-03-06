@@ -1,0 +1,306 @@
+<!doctype html>
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+</head>
+<style>
+  .tooltip {
+    position: absolute;
+    text-align: left;
+    padding: 8px;
+    font-size: 12px;
+    background: white;
+    border: 1px solid gray;
+    border-radius: 4px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+</style>
+<div id="scatterplot">
+  <div id="scatterContainer"></div>
+  <label>Stores:</label>
+  <div id="storeCheckboxes"></div>
+  <label>Nutrients:</label>
+  <select id="nutrientSelect"></select>
+  <label>Category:</label>
+  <select id="categorySelect"></select>
+  <div class="tooltip" id="tooltip"></div>
+</div>
+<div id="coefPlot">
+  <div id="coefContainer"></div>
+</div>
+<script type="module">
+  console.log(d3);
+
+  const tooltip = d3.select("#tooltip");
+
+  const margin = { top: 40, right: 40, bottom: 40, left: 70 },
+    width = 500 - margin.left - margin.right,
+    height = 500 - margin.top - margin.bottom;
+
+  const svg = d3
+    .select("#scatterContainer")
+    .append("svg")
+    .attr("width", width + margin.left + margin.right + 150)
+    .attr("height", height + margin.top + margin.bottom)
+    .append("g")
+    .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+  d3.csv("/foods.csv").then(function (data) {
+    const allNutrients = [
+      "Protein",
+      "Total Fat",
+      "Carbohydrate",
+      "Sugars, total",
+      "Fiber, total dietary",
+      "Calcium",
+      "Iron",
+      "Sodium",
+      "Vitamin C",
+      "Cholesterol",
+      "Fatty acids, total saturated",
+      "Total Vitamin A",
+    ];
+    const allStores = ["Target", "Walmart", "WholeFoods"];
+    const allCategories = [
+      "All",
+      ...new Set(data.map((d) => d["harmonized single category"])),
+    ];
+
+    const nutrientUnits = {
+      Protein: "g",
+      "Total Fat": "g",
+      Carbohydrate: "g",
+      "Sugars, total": "g",
+      "Fiber, total dietary": "g",
+      Calcium: "mg",
+      Iron: "mg",
+      Sodium: "mg",
+      "Vitamin C": "mg",
+      Cholesterol: "mg",
+      "Fatty acids, total saturated": "g",
+      "Total Vitamin A": "mcg",
+    };
+
+    const storeCheckboxes = d3
+      .select("#storeCheckboxes")
+      .selectAll("label")
+      .data(allStores)
+      .join("label")
+      .style("margin-right", "10px")
+      .html((d) => `<input type="checkbox" value="${d}" checked> ${d}`);
+
+    function getSelectedStores() {
+      return Array.from(
+        document.querySelectorAll("#storeCheckboxes input:checked"),
+      ).map((d) => d.value);
+    }
+
+    const nutrientSelect = d3.select("#nutrientSelect");
+    nutrientSelect
+      .selectAll("option")
+      .data(allNutrients)
+      .join("option")
+      .attr("value", (d) => d)
+      .text((d) => d);
+
+    const categorySelect = d3.select("#categorySelect");
+    categorySelect
+      .selectAll("option")
+      .data(allCategories)
+      .join("option")
+      .attr("value", (d) => d)
+      .text((d) => d);
+
+    const x = d3.scaleLinear().range([0, width]);
+    const xAxis = svg
+      .append("g")
+      .attr("class", "x-axis")
+      .attr("transform", `translate(0, ${height})`);
+    const xAxisLabel = svg
+      .append("text")
+      .attr("class", "label")
+      .attr("text-anchor", "end")
+      .attr("fill", "black")
+      .attr("font-size", "12px")
+      .attr("font-weight", "bold")
+      .attr("x", width - margin.right)
+      .attr("y", height + 35);
+
+    const y = d3.scaleLinear().range([height, 0]);
+    const yAxis = svg.append("g").attr("class", "y-axis");
+    yAxis
+      .append("text")
+      .attr("class", "y-label")
+      .attr("transform", `translate(-35, ${margin.top}) rotate(-90)`)
+      .attr("text-anchor", "end")
+      .attr("fill", "black")
+      .attr("font-size", "12px")
+      .attr("font-weight", "bold")
+      .text("Price (in USD)");
+
+    const chartTitle = svg
+      .append("text")
+      .attr("class", "chart-title")
+      .attr("x", width / 2)
+      .attr("y", -10)
+      .attr("text-anchor", "middle")
+      .attr("font-size", "16px")
+      .attr("font-weight", "bold");
+
+    const zoomLayer = svg.append("g").attr("class", "zoom-layer");
+
+    const color = d3
+      .scaleOrdinal()
+      .domain(allStores)
+      .range(["red", "blue", "green"]);
+
+    const circles = zoomLayer
+      .selectAll("circle")
+      .data(data)
+      .join("circle")
+      .attr("r", 5)
+      .style("fill", function (d) {
+        return color(d.store);
+      })
+      .style("opacity", 0.8)
+      .on("mouseover", function (event, d) {
+        tooltip.style("opacity", 1).html(`
+          <strong>${d.name}</strong><br/>
+          <strong>Store:</strong> ${d.store}<br/>
+          <strong>Category:</strong> ${d["harmonized single category"]}<br/>
+          <strong>Brand:</strong> ${d.brand}<br/>
+          <strong>Price:</strong> $${d.price}<br/>
+          <strong>Protein:</strong> ${d.Protein}g<br/>
+          <strong>Total Fat:</strong> ${d["Total Fat"]}g<br/>
+          <strong>Carbohydrates:</strong> ${d.Carbohydrate}g<br/>
+          <strong>Total Sugar:</strong> ${d["Sugars, total"]}g<br/>
+          <strong>Dietary Fiber:</strong> ${d["Fiber, total dietary"]}g<br/>
+          <strong>Calcium:</strong> ${d.Calcium}mg<br/>
+          <strong>Iron:</strong> ${d.Iron}mg<br/>
+          <strong>Sodium:</strong> ${d.Sodium}mg<br/>
+          <strong>Vitamin C:</strong> ${d["Vitamin C"]}mg<br/>
+          <strong>Cholesterol:</strong> ${d.Cholesterol}mg<br/>
+          <strong>Total Saturated Fatty Acids:</strong> ${d["Fatty acids, total saturated"]}g<br/>
+          <strong>Total Vitamin A:</strong> ${d["Total Vitamin A"]}mcg<br/>
+        `);
+        d3.select(this).style("stroke", "black").style("stroke-width", 2);
+      })
+      .on("mousemove", function (event) {
+        tooltip
+          .style("left", event.pageX + 10 + "px")
+          .style("top", event.pageY - 20 + "px");
+      })
+      .on("mouseout", function () {
+        tooltip.style("opacity", 0);
+        d3.select(this).style("stroke", "none");
+      });
+
+    function updateChart() {
+      const nutrient = nutrientSelect.property("value");
+      const category = categorySelect.property("value");
+      const selectedStores = getSelectedStores();
+
+      const filteredData = data.filter((d) => {
+        const categoryMatch =
+          category === "All" || d["harmonized single category"] == category;
+        const storeMatch = selectedStores.includes(d.store);
+        return categoryMatch && storeMatch;
+      });
+
+      chartTitle.text(
+        `${nutrient} vs Pricing${category !== "All" ? ` in ${category}` : ""}`,
+      );
+
+      x.domain(d3.extent(filteredData, (d) => +d[nutrient]));
+      xAxis.call(d3.axisBottom(x));
+      xAxisLabel.text(`${nutrient} (in ${nutrientUnits[nutrient]})`);
+
+      y.domain(d3.extent(filteredData, (d) => +d.price));
+      yAxis.call(d3.axisLeft(y));
+
+      circles
+        .style("display", (d) =>
+          selectedStores.includes(d.store) &&
+          (category === "All" || d["harmonized single category"] === category)
+            ? null
+            : "none",
+        )
+        .attr("cx", (d) => x(+d[nutrient]))
+        .attr("cy", (d) => y(+d.price));
+    }
+
+    nutrientSelect.on("change", updateChart);
+    categorySelect.on("change", updateChart);
+    d3.selectAll("#storeCheckboxes input").on("change", updateChart);
+
+    nutrientSelect.property("value", allNutrients[0]);
+    categorySelect.property("value", allCategories[1]);
+
+    updateChart();
+
+    const legendX = width + 40;
+    const legendY = 0;
+    const legendSpacing = 19;
+
+    const legendColor = svg
+      .append("g")
+      .attr("transform", `translate(${legendX}, ${legendY})`);
+
+    const store = color.domain();
+
+    legendColor
+      .selectAll("legendColors")
+      .data(store)
+      .join("circle")
+      .attr("cx", 0)
+      .attr("cy", (d, i) => i * 25)
+      .attr("r", 6)
+      .style("fill", (d) => color(d));
+
+    legendColor
+      .selectAll("legendColorLabels")
+      .data(store)
+      .join("text")
+      .attr("x", 12)
+      .attr("y", (d, i) => i * 25 + 4)
+      .text((d) => d)
+      .attr("font-size", "12px")
+      .attr("fill", "black");
+
+    const zoom = d3
+      .zoom()
+      .scaleExtent([0.5, 10])
+
+      .on("zoom", zoomed);
+
+    d3.select("#scatterContainer svg").call(zoom);
+
+    function zoomed(event) {
+      const nutrient = nutrientSelect.property("value");
+      const newX = event.transform.rescaleX(x);
+      const newY = event.transform.rescaleY(y);
+
+      xAxis.call(d3.axisBottom(newX));
+      yAxis.call(d3.axisLeft(newY));
+
+      circles
+        .attr("cx", (d) => newX(+d[nutrient]))
+        .attr("cy", (d) => newY(+d.price))
+        .style("display", (d) => {
+          const category = categorySelect.property("value");
+          const selectedStores = getSelectedStores();
+          const isFiltered =
+            !selectedStores.includes(d.store) ||
+            (category !== "All" &&
+              d["harmonized single category"] !== category);
+
+          const cx = newX(+d[nutrient]);
+          const cy = newY(+d.price);
+          const outOfBounds = cx < 0 || cx > width || cy < 0 || cy > height;
+
+          return isFiltered || outOfBounds ? "none" : null;
+        });
+    }
+  });
+</script>
